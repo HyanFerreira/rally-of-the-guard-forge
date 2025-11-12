@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# Forge dev runtime
+run/
+logs/
+*.log
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Java/OS
+*.class
+.DS_Store
+Thumbs.db
+
+# DataGen (ignore se você NÃO quer versionar a saída)
+src/generated/
+# (remova a linha acima se você versionar os assets gerados)
+# Gradle wrapper (manter no repo)
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
