@@ -8,6 +8,10 @@ run/
 logs/
 *.log
 
+# Local test-only mod jars
+guardvillagers-*.jar
+guardvillagers-*/
+
 # IDEs
 .idea/
 *.iml

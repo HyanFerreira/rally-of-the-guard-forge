@@ -14,7 +14,7 @@ loom {
     silentMojangMappingsLicense()
 
     forge {
-        mixinConfig 'rallyguard.mixins.json'
+        //mixinConfig 'rallyguard.mixins.json'
     }
 }
 
@@ -30,6 +30,13 @@ dependencies {
     minecraft "net.minecraft:minecraft:$project.minecraft_version"
     mappings loom.officialMojangMappings()
     forge "net.minecraftforge:forge:$project.forge_version"
+
+    def guardVillagersJar = file(project.guardvillagers_jar)
+    if (guardVillagersJar.exists()) {
+        modImplementation files(guardVillagersJar)
+    } else {
+        logger.warn("Guard Villagers jar not found at ${guardVillagersJar}. runClient needs this local mod dependency.")
+    }
 }
 
 processResources {
