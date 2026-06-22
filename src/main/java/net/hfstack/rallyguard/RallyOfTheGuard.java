@@ -35,6 +35,7 @@ public final class RallyOfTheGuard {
 
         // Lifecycle
         modBus.addListener(this::commonSetup);
+        modBus.addListener(ModItems::registerCreativeTabContents);
 
         // ==== EVENTOS DE JOGO (Forge EVENT BUS) ====
         MinecraftForge.EVENT_BUS.register(new InteractGuardHandler());
