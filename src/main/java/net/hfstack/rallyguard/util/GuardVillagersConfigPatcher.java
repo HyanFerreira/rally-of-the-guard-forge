@@ -9,20 +9,28 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Garante followHero=false no config do Guard Villagers.
- * Suporta JSON (Fabric) e TOML (Forge: guardvillagers-common.toml).
+ * Disables GuardVillagers' Hero of the Village requirement for following.
  */
 public final class GuardVillagersConfigPatcher {
     private static final Logger LOGGER = LoggerFactory.getLogger(RallyOfTheGuard.MOD_ID);
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final String FORGE_FOLLOW_HERO_KEY =
+            "Have guards only follow the player if they have hero of the village?";
+    private static boolean runtimePatchLogged;
 
     private GuardVillagersConfigPatcher() {
     }
@@ -35,18 +43,49 @@ public final class GuardVillagersConfigPatcher {
 
             if (Files.exists(json)) {
                 patchJson(json);
-                return;
-            }
-
-            if (Files.exists(toml)) {
+            } else if (Files.exists(toml)) {
                 patchToml(toml);
-                return;
+            } else {
+                LOGGER.info("[{}] Config do GuardVillagers ainda nao encontrado; aplicando patch em runtime.",
+                        RallyOfTheGuard.MOD_ID);
             }
 
-            LOGGER.info("[{}] Config do GuardVillagers não encontrado ainda (será criado no primeiro run).",
-                    RallyOfTheGuard.MOD_ID);
+            forceRuntimeFollowHeroConfigValue();
         } catch (Exception e) {
             LOGGER.error("[{}] Falha ao ajustar followHero no GuardVillagers", RallyOfTheGuard.MOD_ID, e);
+        }
+    }
+
+    public static void forceRuntimeFollowHeroConfigValue() {
+        try {
+            Class<?> guardConfig = Class.forName("tallestegg.guardvillagers.configuration.GuardConfig");
+            Object commonConfig = guardConfig.getField("COMMON").get(null);
+            Field followHeroValueField = commonConfig.getClass().getField("followHero");
+            Object followHeroValue = followHeroValueField.get(commonConfig);
+            Method set = followHeroValue.getClass().getMethod("set", Object.class);
+            set.invoke(followHeroValue, Boolean.FALSE);
+
+            forceRuntimeFollowHeroFlag();
+            if (!runtimePatchLogged) {
+                runtimePatchLogged = true;
+                LOGGER.info("[{}] GuardVillagers runtime ajustado: followHero=false", RallyOfTheGuard.MOD_ID);
+            }
+        } catch (ClassNotFoundException ignored) {
+            LOGGER.warn("[{}] GuardVillagers nao esta disponivel para ajustar followHero em runtime.",
+                    RallyOfTheGuard.MOD_ID);
+        } catch (ReflectiveOperationException e) {
+            LOGGER.error("[{}] Falha ao ajustar followHero em runtime no GuardVillagers", RallyOfTheGuard.MOD_ID, e);
+        }
+    }
+
+    public static void forceRuntimeFollowHeroFlag() {
+        try {
+            Class<?> guardConfig = Class.forName("tallestegg.guardvillagers.configuration.GuardConfig");
+            guardConfig.getField("followHero").setBoolean(null, false);
+        } catch (ClassNotFoundException ignored) {
+            // GuardVillagers is not loaded yet.
+        } catch (ReflectiveOperationException e) {
+            LOGGER.error("[{}] Falha ao ajustar campo followHero no GuardVillagers", RallyOfTheGuard.MOD_ID, e);
         }
     }
 
@@ -55,6 +94,7 @@ public final class GuardVillagersConfigPatcher {
         try (Reader r = new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8)) {
             root = JsonParser.parseReader(r).getAsJsonObject();
         }
+
         boolean needsWrite = !root.has("followHero") || root.get("followHero").getAsBoolean();
         if (needsWrite) {
             root.addProperty("followHero", false);
@@ -63,29 +103,57 @@ public final class GuardVillagersConfigPatcher {
             }
             LOGGER.info("[{}] GuardVillagers JSON ajustado: followHero=false", RallyOfTheGuard.MOD_ID);
         } else {
-            LOGGER.info("[{}] GuardVillagers JSON já está com followHero=false", RallyOfTheGuard.MOD_ID);
+            LOGGER.info("[{}] GuardVillagers JSON ja esta com followHero=false", RallyOfTheGuard.MOD_ID);
         }
     }
 
     private static void patchToml(Path file) throws IOException {
-        String content = Files.readString(file, StandardCharsets.UTF_8);
+        String original = Files.readString(file, StandardCharsets.UTF_8);
+        String content = removeStaleFabricKey(original);
 
-        // troca followHero = true -> false (case-insensitive, preserva espaços)
-        Pattern p = Pattern.compile("(?m)^(\\s*followHero\\s*=\\s*)(true)(\\b)", Pattern.CASE_INSENSITIVE);
-        Matcher m = p.matcher(content);
+        Pattern followHeroPattern = Pattern.compile(
+                "(?m)^(\\s*\"" + Pattern.quote(FORGE_FOLLOW_HERO_KEY) + "\"\\s*=\\s*)(true|false)(\\b)",
+                Pattern.CASE_INSENSITIVE
+        );
+        Matcher matcher = followHeroPattern.matcher(content);
 
-        if (m.find()) {
-            String updated = m.replaceAll("$1false$3");
-            Files.writeString(file, updated, StandardCharsets.UTF_8);
-            LOGGER.info("[{}] GuardVillagers TOML ajustado: followHero=false", RallyOfTheGuard.MOD_ID);
-        } else if (!content.toLowerCase().contains("followhero")) {
-            // não existe a chave -> acrescenta no final (fallback simples)
-            String updated = content + System.lineSeparator() + "followHero = false" + System.lineSeparator();
-            Files.writeString(file, updated, StandardCharsets.UTF_8);
-            LOGGER.info("[{}] GuardVillagers TOML: adicionada chave followHero=false no final.", RallyOfTheGuard.MOD_ID);
+        String updated;
+        if (matcher.find()) {
+            updated = matcher.replaceAll("$1false$3");
         } else {
-            LOGGER.info("[{}] GuardVillagers TOML já possui followHero=false (ou valor equivalente).",
-                    RallyOfTheGuard.MOD_ID);
+            updated = appendForgeFollowHeroKey(content);
         }
+
+        if (!updated.equals(original)) {
+            Files.writeString(file, updated, StandardCharsets.UTF_8);
+            LOGGER.info("[{}] GuardVillagers TOML ajustado: {}=false",
+                    RallyOfTheGuard.MOD_ID, FORGE_FOLLOW_HERO_KEY);
+        } else {
+            LOGGER.info("[{}] GuardVillagers TOML ja permite follow sem Heroi da Vila.", RallyOfTheGuard.MOD_ID);
+        }
+    }
+
+    private static String removeStaleFabricKey(String content) {
+        return Pattern.compile("(?m)^\\s*followHero\\s*=\\s*(true|false)\\s*\\R?", Pattern.CASE_INSENSITIVE)
+                .matcher(content)
+                .replaceAll("");
+    }
+
+    private static String appendForgeFollowHeroKey(String content) {
+        String line = "\"" + FORGE_FOLLOW_HERO_KEY + "\" = false" + System.lineSeparator();
+        int guardStuffIndex = content.indexOf("[\"guard stuff\"]");
+        if (guardStuffIndex < 0) {
+            return content + System.lineSeparator() + "[\"guard stuff\"]" + System.lineSeparator() + line;
+        }
+
+        int nextSectionIndex = content.indexOf(System.lineSeparator() + "[\"", guardStuffIndex + 1);
+        if (nextSectionIndex < 0) {
+            return content + System.lineSeparator() + line;
+        }
+
+        return content.substring(0, nextSectionIndex)
+                + System.lineSeparator()
+                + line
+                + content.substring(nextSectionIndex);
     }
 }

@@ -13,6 +13,7 @@ import net.hfstack.rallyguard.util.GuardVillagersConfigPatcher;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
@@ -36,6 +37,8 @@ public final class RallyOfTheGuard {
         // Lifecycle
         modBus.addListener(this::commonSetup);
         modBus.addListener(ModItems::registerCreativeTabContents);
+        modBus.addListener(this::onConfigLoading);
+        modBus.addListener(this::onConfigReloading);
 
         // ==== EVENTOS DE JOGO (Forge EVENT BUS) ====
         MinecraftForge.EVENT_BUS.register(new InteractGuardHandler());
@@ -56,5 +59,17 @@ public final class RallyOfTheGuard {
             // Registra apenas os handlers/receivers do lado do servidor
             GuardCommandNetworking.registerServer();
         });
+    }
+
+    private void onConfigLoading(final ModConfigEvent.Loading event) {
+        if ("guardvillagers".equals(event.getConfig().getModId())) {
+            GuardVillagersConfigPatcher.patchFollowHeroConfig();
+        }
+    }
+
+    private void onConfigReloading(final ModConfigEvent.Reloading event) {
+        if ("guardvillagers".equals(event.getConfig().getModId())) {
+            GuardVillagersConfigPatcher.patchFollowHeroConfig();
+        }
     }
 }

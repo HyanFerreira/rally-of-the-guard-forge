@@ -14,7 +14,7 @@ loom {
     silentMojangMappingsLicense()
 
     forge {
-        //mixinConfig 'rallyguard.mixins.json'
+        mixinConfig 'rallyguard.mixins.json'
     }
 }
 
